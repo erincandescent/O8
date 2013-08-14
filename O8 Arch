@@ -1,0 +1,128 @@
+Programming model:
+    Accumulators (8-bit):
+        A,      Primary accumulator
+        B,      Seccondary accumulator
+
+    Address registers (16-bit):
+        I,      Index register
+        S,      Stack pointer
+
+    Special registers:
+        IP,     Instruction pointer, 16-bit
+        CC,     Condition code, 8-bit
+            [0] ZF  Zero flag
+            [1] CF  Carry flag
+            [2] OF  Overflow flag
+            [3] SF  Sign flag
+            [4] PF  Parity flag
+            [5] IF  Interrupt flag
+            [6,7] Zero (constant)
+            
+
+INSTRUCTIONS
+    For all instructions, x y and z represent accumulators. When encoded
+    into the instruction bit pattern, 0 is A and 1 is B.
+
+    In addition, p q and r are used to represent the address registers, with
+    0 represnting I and 1 representing S
+
+    s, t and u represent the lower (0) and upper (1) bytes of the address register
+        referenced by p q and r respectively.
+
+    For indexed memory instructions, d controls direction: 0 implies increment, 
+    1 implies decrement
+
+    When the CYCLES column includes a +, it implies that this instruction may be
+    lengthened by carry from an update of a 16-bit register (IP, I or S). In addition,
+    all instructions may be lengthened by 1 cycle when execution passes over a 
+    page and carry occurs between IP.L and IP.H
+
+    Any encoding containing a - implies does not care. All "-" mnemonics are illegal and
+    will cause a reset
+
+ENCODING  MNEMONIC      OPERATION               CYCLES          FLAGS   COMMENTS
+
+Arithmetic & Logical
+0000 0xyz ADDxyz        z = x + y               2               ZCOSP
+0000 1xyz SUBxyz        z = x - y               2               ZCOSP
+
+0001 0xyz ADCxyz        z = x + y + CF          2               ZCOSP
+0001 1xyz SBCxyz        z = x - y + CF - 1      2               ZCOSP
+
+0010 000z ANDz          z = A & B               2               Z  SP
+0010 001z ORz           z = A | B               2               Z  SP
+0010 010z XORz          z = A ^ B               2               Z  SP
+0010 011z XNORz         z = A ~^ B              2               Z  SP
+
+0010 10xz NOTxz         z = ~x                  2               Z  SP
+0010 11xz ADCxz         z = x + CF              2               ZCOSP
+
+Flags
+0011 sbbb CLs/STx       CC[b] = s               2               By b.
+
+Data Movement
+0100 00xz MOVxz         z = x                   2
+0100 01xz MOVpr         r = p                   2
+0100 100z MOVCCz        z = CC                  2
+0100 101x MOVxCC        CC = x                  2
+0100 11xz SHRxz         z = x >> 1              2               ZCOSP   Oddity due to ISA packing
+0101 0spz MOVspz        z = s                   2
+0101 1spx MOVxsp        s = z                   2
+
+0110 cccc Jcc.L         IP = LIT2               3               
+0111 cccc Jcc.I         IP = {A , B}            2                       Address taken from A:B
+
+100i iiiz LDIz.I        z = {0000, iiii}        2
+1010 000z LDIz.L        z = LIT1                2+              
+1010 001r LDIr.L        r = LIT2                3+              
+1010 010r MOVABr        r = {A, B}              3
+
+Logic
+1010 011x TESTx         x == 0                  2               Z  SP
+1010 1000 CMP           a - b                   2               ZCOSP
+1010 1001 -
+1010 101- -
+1010 11-- -
+
+
+Memory
+1100 000z LDz           z = *IX                 2
+1100 001x STx           *IX = x                 2
+1100 0100 -
+1100 0101 -
+1100 0110 RET           IP = IX                 4+
+1100 0111 IRET          CC = POP(), IP = POP()  5+              Interrupt return
+1100 1000 CALL.I        IX=IP; IP={ A, B }      4+              Procedure call
+1100 1001 CALL.L        IX=IP, IP=LIT2          5+              Procedure call
+1100 1010 PUSHI         PUSH(I)                 4+
+1100 1011 POPI          I = POP()               4+
+1100 11-- -
+1101 ---- -
+1110 0drz LDrzd         z = *r; r += d();       3+
+1110 1drz LDrdz         r += d(); z = *r;       3+
+1111 0drx STxrd         *r = x; r += d();       3+
+1111 1drx STxdr         r += d(); *r = x;       3+
+
+ALIASES:
+    PUSHx  -> STxDS
+    POPx   -> LDxSD
+    SHLxz  -> ADDxxz 
+
+Jump instruction variations:
+    CCCC        Mnemonic
+    0000        JMP             Unconditional
+    0001        JO              overflow
+    0010        JZ/JE           zero/equal
+    0011        JNZ/JNE         not zero/not equal
+    0100        JC/JLU          carry/less than unsigned
+    0101        JNC/JGEU        not carry/greater than or equal unsigned
+    0110        JLEU            less than or equal unsigned
+    0111        JGU             greater than unsigned
+    1000        JLS             less than signed
+    1001        JGES            greater than or equal signed
+    1010        JLES            less than or equal signed
+    1011        JGS             greater than signed
+    1100        JS              sign set/negative
+    1101        JNS             sign unset/positive
+    1110        JP/JEP          parity set/even parity
+    1111        JNP/JOP         parity not set/odd parity             
